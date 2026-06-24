@@ -1,73 +1,64 @@
 /**
- * FlyTripVisa AI - Integrated Logic
+ * FlyTripVisa AI - Production Ready Integration
+ * Account: b73b80fa62deef032d3c08248cf2f30b
  */
 
-// DOM elements updated for index.html compatibility
-const chatMessages = document.getElementById("chatContainer");
+const chatContainer = document.getElementById("chatContainer");
 const userInput = document.getElementById("userInput");
-const sendButton = document.querySelector(".btn-send");
-const typingIndicator = document.getElementById("typing-indicator") || document.createElement("div");
+const sendBtn = document.querySelector(".btn-send");
+
+// Gateway এন্ডপয়েন্ট ও আপনার অথরাইজেশন টোকেন
+const API_URL = "https://gateway.ai.cloudflare.com/v1/b73b80fa62deef032d3c08248cf2f30b/default/compat/run/@cf/meta/llama-3-8b-instruct";
+const API_TOKEN = "YOUR_API_TOKEN"; // আপনার ইস্যু করা টোকেনটি এখানে বসান
 
 let chatHistory = [{ role: "assistant", content: "Hello! I am your AI Travel Assistant. How can I help you?" }];
-let isProcessing = false;
-
-// Event Listeners
-sendButton.addEventListener("click", sendMessage);
-userInput.addEventListener("keypress", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 
 async function sendMessage() {
-    const message = userInput.value.trim();
-    if (message === "" || isProcessing) return;
+    const text = userInput.value.trim();
+    if (!text) return;
 
-    isProcessing = true;
-    userInput.disabled = true;
-    sendButton.disabled = true;
-
-    addMessageToChat("msg-user", message);
+    // UI আপডেট
+    appendMsg("msg-user", text);
     userInput.value = "";
-    
-    chatHistory.push({ role: "user", content: message });
-    typingIndicator.classList.add("visible");
+    chatHistory.push({ role: "user", content: text });
+
+    const aiMsgDiv = document.createElement("div");
+    aiMsgDiv.className = "msg msg-ai";
+    aiMsgDiv.innerText = "Thinking...";
+    chatContainer.appendChild(aiMsgDiv);
 
     try {
-        // Assistant Message Placeholder
-        const assistantMessageEl = document.createElement("div");
-        assistantMessageEl.className = "msg msg-ai";
-        chatMessages.appendChild(assistantMessageEl);
-
-        const response = await fetch("/api/chat", {
+        const response = await fetch(API_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages: chatHistory }),
+            headers: {
+                "Authorization": `Bearer ${API_TOKEN}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ messages: chatHistory })
         });
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let responseText = "";
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            responseText += decoder.decode(value, { stream: true });
-            assistantMessageEl.innerText = responseText;
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
+        const data = await response.json();
+        const responseText = data.result?.response || "AI returned no content.";
+        
+        aiMsgDiv.innerText = responseText;
         chatHistory.push({ role: "assistant", content: responseText });
-    } catch (error) {
-        addMessageToChat("msg-ai", "Sorry, error processing request.");
-    } finally {
-        typingIndicator.classList.remove("visible");
-        isProcessing = false;
-        userInput.disabled = false;
-        sendButton.disabled = false;
-        userInput.focus();
+    } catch (err) {
+        aiMsgDiv.innerText = "Error: Connection failed. Check your API Token/Permissions.";
+        console.error("AI Gateway Error:", err);
     }
+    chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-function addMessageToChat(className, content) {
+function appendMsg(cls, text) {
     const div = document.createElement("div");
-    div.className = `msg ${className}`;
-    div.innerText = content;
-    chatMessages.appendChild(div);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    div.className = `msg ${cls}`;
+    div.innerText = text;
+    chatContainer.appendChild(div);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
 }
+
+// Event Listeners
+sendBtn.addEventListener("click", sendMessage);
+userInput.addEventListener("keypress", (e) => { if(e.key === "Enter") sendMessage(); });

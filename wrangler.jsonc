@@ -6,6 +6,19 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "ai": { "binding": "AI" },
+  "account_id": "b73b80fa62deef032d3c08248cf2f30b",
+  "kv_namespaces": [
+    {
+      "binding": "KV_BINDING",
+      "id": "cc79304937ff4daa9d6debae85da8be9"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PROJECT_FILES",
+      "bucket_name": "flytrip-project-files"
+    }
+  ],
   "assets": {
     "directory": "./public",
     "not_found": "index.html"

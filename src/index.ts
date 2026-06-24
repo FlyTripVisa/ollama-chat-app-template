@@ -1,102 +1,139 @@
+import { Ai } from '@cloudflare/ai';
+
+export interface Env {
+	AI: Ai;
+	KV_BINDING: KVNamespace;
+	PROJECT_FILES: R2Bucket;
+}
+
 /**
- * LLM Chat Application Template
- *
- * A simple chat application using Cloudflare Workers AI.
- * This template demonstrates how to implement an LLM-powered chat interface with
- * streaming responses using Server-Sent Events (SSE).
- *
- * @license MIT
+ * FlyTripVisa AI - Production Ready Worker
+ * Account ID: b73b80fa62deef032d3c08248cf2f30b
  */
-import { Env, ChatMessage } from "./types";
-
-// Model ID for Workers AI model
-// https://developers.cloudflare.com/workers-ai/models/
-const MODEL_ID = "@cf/meta/llama-3.1-8b-instruct-fp8";
-
-// Default system prompt
-const SYSTEM_PROMPT =
-	"You are a helpful, friendly assistant. Provide concise and accurate responses.";
 
 export default {
-	/**
-	 * Main request handler for the Worker
-	 */
-	async fetch(
-		request: Request,
-		env: Env,
-		ctx: ExecutionContext,
-	): Promise<Response> {
+	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 
-		// Handle static assets (frontend)
-		if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
-			return env.ASSETS.fetch(request);
+		// ====================== API ROUTES ======================
+		if (url.pathname === '/api/chat' && request.method === 'POST') {
+			return handleChat(request, env);
 		}
 
-		// API Routes
-		if (url.pathname === "/api/chat") {
-			// Handle POST requests for chat
-			if (request.method === "POST") {
-				return handleChatRequest(request, env);
-			}
-
-			// Method not allowed for other request types
-			return new Response("Method not allowed", { status: 405 });
+		if (url.pathname.startsWith('/api/files/')) {
+			return handleFileOperations(request, env);
 		}
 
-		// Handle 404 for unmatched routes
-		return new Response("Not found", { status: 404 });
+		// Serve static assets (index.html, chat.js etc.)
+		return env.ASSETS.fetch(request);
 	},
-} satisfies ExportedHandler<Env>;
+};
 
-/**
- * Handles chat API requests
- */
-async function handleChatRequest(
-	request: Request,
-	env: Env,
-): Promise<Response> {
+// ====================== ফাইল অপারেশন API ======================
+async function handleFileOperations(request: Request, env: Env): Promise<Response> {
+	const url = new URL(request.url);
+	const filePath = url.pathname.replace('/api/files/', '');
+
 	try {
-		// Parse JSON request body
-		const { messages = [] } = (await request.json()) as {
-			messages: ChatMessage[];
-		};
-
-		// Add system prompt if not present
-		if (!messages.some((msg) => msg.role === "system")) {
-			messages.unshift({ role: "system", content: SYSTEM_PROMPT });
+		if (request.method === 'GET') {
+			const object = await env.PROJECT_FILES.get(filePath);
+			if (!object) return new Response('File not found', { status: 404 });
+			return new Response(object.body, {
+				headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+			});
 		}
 
-		const inputs = {
-			messages,
-			max_tokens: 1024,
-			stream: true,
-		} satisfies AiTextGenerationInput & { stream: true };
+		if (request.method === 'PUT') {
+			const content = await request.text();
+			await env.PROJECT_FILES.put(filePath, content);
+			await env.KV_BINDING.put(`file:${filePath}`, Date.now().toString());
+			return Response.json({ 
+				success: true, 
+				message: `${filePath} সফলভাবে আপডেট হয়েছে` 
+			});
+		}
 
-		const stream = await env.AI.run<typeof MODEL_ID>(MODEL_ID, inputs, {
-			// Uncomment to use AI Gateway
-			// gateway: {
-			//   id: "YOUR_GATEWAY_ID", // Replace with your AI Gateway ID
-			//   skipCache: false,      // Set to true to bypass cache
-			//   cacheTtl: 3600,        // Cache time-to-live in seconds
-			// },
-		});
-
-		return new Response(stream, {
-			headers: {
-				"content-type": "text/event-stream; charset=utf-8",
-				"cache-control": "no-cache",
-				connection: "keep-alive",
-			},
-		});
+		if (request.method === 'DELETE') {
+			await env.PROJECT_FILES.delete(filePath);
+			await env.KV_BINDING.delete(`file:${filePath}`);
+			return Response.json({ 
+				success: true, 
+				message: `${filePath} ডিলিট হয়েছে` 
+			});
+		}
 	} catch (error) {
-		console.error("Error processing chat request:", error);
-		return new Response(
-			JSON.stringify({ error: "Failed to process request" }),
-			{
-				status: 500,
-				headers: { "content-type": "application/json" },
-			},
-		);
+		console.error("File operation error:", error);
+		return Response.json({ error: "Operation failed" }, { status: 500 });
+	}
+
+	return new Response('Method not allowed', { status: 405 });
+}
+
+// ====================== চ্যাট হ্যান্ডলার (Streaming + Non-streaming) ======================
+async function handleChat(request: Request, env: Env): Promise<Response> {
+	try {
+		const body = await request.json() as any;
+		const { prompt, messages: history = [], stream = false } = body;
+
+		const ai = new Ai(env.AI);
+
+		const systemPrompt = `You are FlyTripVisa AI — a professional, friendly travel assistant specialized for Bangladeshi users.
+You help with visa, flight, hotel, and travel planning.
+You can also manage your own project files (create, edit, update, delete).
+
+When user asks to modify any file:
+- Understand the requirement
+- Generate the complete file code
+- Tell them clearly which file to update
+- Reply in Bengali + English mix.
+
+Current project structure:
+- public/index.html
+- public/chat.js
+- src/index.ts
+- wrangler.jsonc`;
+
+		const messages = [
+			{ role: 'system', content: systemPrompt },
+			...history.slice(-12),
+			{ role: 'user', content: prompt || body.messages?.[body.messages.length - 1]?.content }
+		];
+
+		// Streaming Support
+		if (stream) {
+			const streamResponse = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+				messages,
+				max_tokens: 1024,
+				temperature: 0.7,
+				stream: true,
+			});
+
+			return new Response(streamResponse, {
+				headers: {
+					"content-type": "text/event-stream; charset=utf-8",
+					"cache-control": "no-cache",
+					"connection": "keep-alive",
+				},
+			});
+		}
+
+		// Default Non-Streaming (best for current chat.js)
+		const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+			messages,
+			max_tokens: 1200,
+			temperature: 0.7,
+		});
+
+		const responseText = result.response || "দুঃখিত, এখন উত্তর দিতে পারছি না।";
+
+		return Response.json({ 
+			response: responseText 
+		});
+
+	} catch (error) {
+		console.error("Chat Error:", error);
+		return Response.json({ 
+			response: "সার্ভারে সমস্যা হয়েছে। আবার চেষ্টা করুন।" 
+		}, { status: 500 });
 	}
 }

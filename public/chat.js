@@ -1,13 +1,23 @@
+/**
+ * FlyTripVisa AI - Chat Frontend
+ * Version: 1.0.0
+ * Security: Token removed from client-side (using Worker proxy)
+ */
+
+"use strict";
+
 // ====================== CONFIG ======================
-const API_URL = "https://gateway.ai.cloudflare.com/v1/b73b80fa62deef032d3c08248cf2f30b/default/compat";
-const API_TOKEN = "b73b80fa62deef032d3c08248cf2f30b";   // ← এখানে আপনার বাস্তব API Token বসান (Account ID নয়)
+const API_URL = "/api/chat";   // ← Worker এর মাধ্যমে কল হবে (সিকিউর)
 
 const chatContainer = document.getElementById("chatContainer");
 const userInput = document.getElementById("userInput");
 const sendBtn = document.querySelector(".btn-send");
 
 let chatHistory = [
-    { role: "assistant", content: "Hello! আমি FlyTripVisa AI। আজকের ভিসা, ফ্লাইট বা ট্রাভেল প্ল্যান নিয়ে কীভাবে সাহায্য করতে পারি?" }
+    { 
+        role: "assistant", 
+        content: "Hello! আমি FlyTripVisa AI। আজকের ভিসা, ফ্লাইট, হোটেল বা ট্রাভেল প্ল্যান নিয়ে কীভাবে সাহায্য করতে পারি?" 
+    }
 ];
 
 // ====================== VOICE RECOGNITION ======================
@@ -16,6 +26,8 @@ recognition.lang = 'bn-BD';
 
 function startVoiceRecognition() {
     const voiceBtn = document.getElementById('voiceBtn');
+    if (!voiceBtn) return;
+
     voiceBtn.classList.add('listening');
     recognition.start();
 
@@ -27,13 +39,18 @@ function startVoiceRecognition() {
 
     recognition.onerror = () => {
         voiceBtn.classList.remove('listening');
-        alert("ভয়েস রেকগনিশন ব্যর্থ হয়েছে!");
+        alert("ভয়েস রেকগনিশন ব্যর্থ হয়েছে! আবার চেষ্টা করুন।");
     };
 }
 
 // ====================== HELPER FUNCTIONS ======================
 function escapeHtml(unsafe) {
-    return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 function appendMessage(role, text) {
@@ -49,12 +66,10 @@ async function sendMessage() {
     const text = userInput.value.trim();
     if (!text) return;
 
-    // User message
     appendMessage("user", text);
     chatHistory.push({ role: "user", content: text });
     userInput.value = "";
 
-    // AI Thinking message
     const aiMsgDiv = document.createElement("div");
     aiMsgDiv.className = "msg msg-ai";
     aiMsgDiv.textContent = "চিন্তা করছি...";
@@ -65,35 +80,33 @@ async function sendMessage() {
         const response = await fetch(API_URL, {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${API_TOKEN}`,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
+                prompt: text,
                 messages: chatHistory,
-                max_tokens: 950,
-                temperature: 0.75
+                stream: false
             })
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            throw new Error(`HTTP ${response.status}`);
         }
 
         const data = await response.json();
-        const reply = data.result?.response || data.response || "দুঃখিত, কোনো উত্তর পাওয়া যায়নি।";
+        const reply = data.response || "দুঃখিত, কোনো উত্তর পাওয়া যায়নি।";
 
         aiMsgDiv.textContent = reply;
         chatHistory.push({ role: "assistant", content: reply });
 
-        // অটো রিফ্রেশ যদি ফাইল আপডেট কমান্ড হয়
-        if (text.toLowerCase().includes("update") || text.toLowerCase().includes("edit") || 
-            text.toLowerCase().includes("তৈরি করো") || text.toLowerCase().includes("আপডেট")) {
-            setTimeout(() => location.reload(), 1800);
+        // Auto refresh for code/file updates
+        if (text.toLowerCase().match(/update|edit|তৈরি করো|আপডেট/)) {
+            setTimeout(() => location.reload(), 1500);
         }
 
     } catch (err) {
-        console.error("AI Gateway Error:", err);
-        aiMsgDiv.textContent = "❌ সংযোগ সমস্যা হয়েছে। API Token এবং পারমিশন চেক করুন।";
+        console.error("AI Error:", err);
+        aiMsgDiv.innerHTML = "❌ সংযোগ সমস্যা হয়েছে।<br>পরে আবার চেষ্টা করুন।";
     }
 
     chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -106,15 +119,14 @@ userInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") sendMessage();
 });
 
-// File attachment (placeholder)
+// File Attachment
 function handleFile(input) {
     if (input.files && input.files[0]) {
-        alert("ফাইল সংযুক্ত: " + input.files[0].name);
+        alert(`📎 ফাইল সংযুক্ত হয়েছে: ${input.files[0].name}`);
     }
 }
 
-// Init
+// ====================== INITIALIZE ======================
 document.addEventListener("DOMContentLoaded", () => {
-    // Initial message
     appendMessage("assistant", chatHistory[0].content);
 });

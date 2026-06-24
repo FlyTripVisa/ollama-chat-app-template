@@ -8,7 +8,7 @@ const userInput = document.getElementById("userInput");
 const sendBtn = document.querySelector(".btn-send");
 
 // Gateway এন্ডপয়েন্ট ও আপনার অথরাইজেশন টোকেন
-const API_URL = "https://gateway.ai.cloudflare.com/v1/b73b80fa62deef032d3c08248cf2f30b/default/compat/run/@cf/meta/llama-3-8b-instruct";
+const API_URL = "Https://gateway.ai.cloudflare.com/v1/b73b80fa62deef032d3c08248cf2f30b/default/compat";
 const API_TOKEN = "b73b80fa62deef032d3c08248cf2f30b"; // আপনার ইস্যু করা টোকেনটি এখানে বসান
 
 let chatHistory = [{ role: "assistant", content: "Hello! I am your AI Travel Assistant. How can I help you?" }];

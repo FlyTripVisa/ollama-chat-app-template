@@ -1,120 +1,103 @@
+/**
+ * FlyTripVisa AI - Cloudflare Worker
+ * Main entry point for AI chat, file management, and database operations
+ */
+
 import { Ai } from '@cloudflare/ai';
 
 export interface Env {
-	AI: Ai;
-	KV_BINDING: KVNamespace;
-	PROJECT_FILES: R2Bucket;
-	DB: D1Database;           // ← D1 Database Added
+  AI: any;
+  KV_BINDING: KVNamespace;
+  DB: D1Database;
+  PROJECT_FILES: R2Bucket;
 }
-
-/**
- * FlyTripVisa AI - Production Ready Worker with D1
- * Account ID: b73b80fa62deef032d3c08248cf2f30b
- */
 
 export default {
-	async fetch(request: Request, env: Env): Promise<Response> {
-		const url = new URL(request.url);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    const path = url.pathname;
 
-		if (url.pathname === '/api/chat' && request.method === 'POST') {
-			return handleChat(request, env);
-		}
+    // --- API Routes ---
+    if (path === '/api/chat' && request.method === 'POST') {
+      return handleChat(request, env);
+    }
 
-		if (url.pathname.startsWith('/api/files/')) {
-			return handleFileOperations(request, env);
-		}
+    if (path === '/api/db-test' && request.method === 'GET') {
+      return handleDbTest(env);
+    }
 
-		// Optional: D1 test endpoint
-		if (url.pathname === '/api/db-test') {
-			return handleDbTest(env);
-		}
+    // --- Serve static assets from public/ (handled by assets binding) ---
+    // Fallback: return index.html for SPA routing
+    if (path === '/' || path === '/login.html' || path === '/file-manager') {
+      return env.assets.fetch(request);
+    }
 
-		return env.ASSETS.fetch(request);
-	},
+    return new Response('Not Found', { status: 404 });
+  }
 };
 
-// ====================== D1 Test Endpoint ======================
-async function handleDbTest(env: Env): Promise<Response> {
-	try {
-		await env.DB.exec("CREATE TABLE IF NOT EXISTS chat_logs (id INTEGER PRIMARY KEY, timestamp TEXT, user_message TEXT, ai_response TEXT);");
-		const result = await env.DB.prepare("SELECT COUNT(*) as count FROM chat_logs").first();
-		return Response.json({ success: true, message: "D1 Database is working", total_logs: result?.count });
-	} catch (e) {
-		return Response.json({ error: "D1 Error", details: e.message }, { status: 500 });
-	}
-}
-
-// ====================== ফাইল অপারেশন API ======================
-async function handleFileOperations(request: Request, env: Env): Promise<Response> {
-	// ... (আগের কোড একই রাখা হয়েছে)
-	const url = new URL(request.url);
-	const filePath = url.pathname.replace('/api/files/', '');
-
-	try {
-		if (request.method === 'GET') {
-			const object = await env.PROJECT_FILES.get(filePath);
-			if (!object) return new Response('File not found', { status: 404 });
-			return new Response(object.body, { headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
-		}
-
-		if (request.method === 'PUT') {
-			const content = await request.text();
-			await env.PROJECT_FILES.put(filePath, content);
-			await env.KV_BINDING.put(`file:${filePath}`, Date.now().toString());
-			return Response.json({ success: true, message: `${filePath} সফলভাবে আপডেট হয়েছে` });
-		}
-
-		if (request.method === 'DELETE') {
-			await env.PROJECT_FILES.delete(filePath);
-			await env.KV_BINDING.delete(`file:${filePath}`);
-			return Response.json({ success: true, message: `${filePath} ডিলিট হয়েছে` });
-		}
-	} catch (error) {
-		console.error("File operation error:", error);
-		return Response.json({ error: "Operation failed" }, { status: 500 });
-	}
-
-	return new Response('Method not allowed', { status: 405 });
-}
-
-// ====================== চ্যাট হ্যান্ডলার ======================
+// ====================== CHAT HANDLER ======================
 async function handleChat(request: Request, env: Env): Promise<Response> {
-	try {
-		const body = await request.json() as any;
-		const { prompt, messages: history = [] } = body;
+  try {
+    const body = await request.json() as { prompt: string; messages?: any[]; stream?: boolean };
+    const { prompt, messages = [], stream = false } = body;
 
-		const ai = new Ai(env.AI);
+    // Build conversation history
+    const conversation = messages.map((m: any) => ({
+      role: m.role,
+      content: m.content
+    }));
 
-		const systemPrompt = `You are FlyTripVisa AI — a professional travel assistant for Bangladeshi users...`;
+    // Add current prompt if not already in messages
+    if (!messages.some((m: any) => m.role === 'user' && m.content === prompt)) {
+      conversation.push({ role: 'user', content: prompt });
+    }
 
-		const messages = [
-			{ role: 'system', content: systemPrompt },
-			...history.slice(-12),
-			{ role: 'user', content: prompt }
-		];
+    // Call Cloudflare AI
+    const ai = new Ai(env.AI);
+    const response = await ai.run('@cf/meta/llama-3-8b-instruct', {
+      messages: conversation,
+      stream: false,
+      max_tokens: 1024,
+    });
 
-		const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
-			messages,
-			max_tokens: 1200,
-			temperature: 0.7,
-		});
+    // Store chat history in KV (optional)
+    const userId = 'default-user';
+    const historyKey = `chat:${userId}`;
+    const history = await env.KV_BINDING.get(historyKey, 'json') || [];
+    history.push({ role: 'user', content: prompt });
+    history.push({ role: 'assistant', content: response.response });
+    if (history.length > 50) history.splice(0, 20); // limit history
+    await env.KV_BINDING.put(historyKey, JSON.stringify(history));
 
-		const responseText = result.response || "দুঃখিত, এখন উত্তর দিতে পারছি না।";
+    return Response.json({
+      response: response.response,
+      usage: response.usage
+    });
 
-		// Optional: Save chat log to D1
-		try {
-			await env.DB.prepare(
-				"INSERT INTO chat_logs (timestamp, user_message, ai_response) VALUES (?, ?, ?)"
-			).bind(new Date().toISOString(), prompt?.substring(0, 500), responseText?.substring(0, 500))
-			.run();
-		} catch (e) {
-			console.error("Failed to log chat:", e);
-		}
+  } catch (error: any) {
+    console.error('Chat error:', error);
+    return Response.json(
+      { error: 'Failed to process chat request', details: error.message },
+      { status: 500 }
+    );
+  }
+}
 
-		return Response.json({ response: responseText });
-
-	} catch (error) {
-		console.error("Chat Error:", error);
-		return Response.json({ response: "সার্ভারে সমস্যা হয়েছে।" }, { status: 500 });
-	}
+// ====================== DATABASE TEST HANDLER ======================
+async function handleDbTest(env: Env): Promise<Response> {
+  try {
+    // Test D1 query
+    const result = await env.DB.prepare('SELECT 1 as test').all();
+    return Response.json({
+      success: true,
+      message: 'Database connection successful',
+      data: result
+    });
+  } catch (error: any) {
+    return Response.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
 }

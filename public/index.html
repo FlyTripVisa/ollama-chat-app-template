@@ -1,53 +1,219 @@
 <!DOCTYPE html>
 <html lang="bn">
 <head>
-    <meta charset="UTF-8"/>
-    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+    <meta charset="UTF-8" />
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
     <title>FLYTRIPVISA | AI Travel Assistant</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;800&display=swap" rel="stylesheet" />
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { background: #010101; font-family: 'Inter', sans-serif; color: #fff; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        .main-wrapper { max-width: 500px; margin: 0 auto; width: 100%; height: 100%; display: flex; flex-direction: column; }
-        
-        .glass-header { padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; background: rgba(1, 1, 3, 0.95); border-bottom: 1px solid #ff550033; }
-        .logo { font-size: 15px; font-weight: 900; color: #ff5500; }
-        
-        #chatContainer { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
-        .msg { padding: 10px 14px; border-radius: 16px; max-width: 85%; font-size: 14px; line-height: 1.4; }
-        .msg-ai { background: #15151a; align-self: flex-start; border: 1px solid #222; }
-        .msg-user { background: #ff5500; color: #000; align-self: flex-end; font-weight: 600; }
-        
-        .input-area { padding: 8px; background: #09090c; display: flex; align-items: center; gap: 6px; border-top: 1px solid #222; }
-        .input-box { flex: 1; background: #111; border: 1px solid #333; border-radius: 18px; padding: 8px 12px; color: #fff; outline: none; font-size: 14px; }
-        .btn-icon { background: #1a1a1f; border: 1px solid #333; color: #ff5500; padding: 8px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; font-size: 14px; }
-        .btn-send { background: #ff5500; border: none; color: #000; padding: 8px 16px; border-radius: 18px; font-weight: 800; cursor: pointer; font-size: 14px; }
-        .btn-send:active { transform: scale(0.95); }
-        
-        .listening { animation: pulse 1.5s infinite; background: #ff5500 !important; color: #000 !important; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        /* --- reset & base --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: #010101;
+            font-family: 'Inter', sans-serif;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .main-wrapper {
+            max-width: 500px;
+            margin: 0 auto;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- header --- */
+        .glass-header {
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(1, 1, 3, 0.95);
+            border-bottom: 1px solid #ff550033;
+            flex-shrink: 0;
+        }
+        .logo {
+            font-size: 15px;
+            font-weight: 900;
+            color: #ff5500;
+            letter-spacing: 0.3px;
+        }
+        .logo span {
+            font-weight: 300;
+            color: #aaa;
+        }
+        .admin-btn {
+            background: #1a1a1f;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: 0.2s;
+            text-decoration: none;
+            font-family: inherit;
+        }
+        .admin-btn:active {
+            opacity: 0.7;
+        }
+
+        /* --- chat container --- */
+        #chatContainer {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+        .msg {
+            padding: 10px 14px;
+            border-radius: 16px;
+            max-width: 85%;
+            font-size: 14px;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+        .msg-ai {
+            background: #15151a;
+            align-self: flex-start;
+            border: 1px solid #2a2a2f;
+            color: #eee;
+        }
+        .msg-user {
+            background: #ff5500;
+            color: #000;
+            align-self: flex-end;
+            font-weight: 600;
+        }
+
+        /* --- input area (mobile friendly) --- */
+        .input-area {
+            padding: 8px;
+            background: #09090c;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-top: 1px solid #222;
+            flex-shrink: 0;
+        }
+        .input-box {
+            flex: 1;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 18px;
+            padding: 8px 12px;
+            color: #fff;
+            outline: none;
+            font-size: 14px;
+            min-width: 0;
+            font-family: inherit;
+        }
+        .input-box::placeholder {
+            color: #777;
+        }
+        .btn-icon {
+            background: #1a1a1f;
+            border: 1px solid #333;
+            color: #ff5500;
+            padding: 8px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.2s;
+            font-size: 14px;
+            width: 36px;
+            height: 36px;
+            flex-shrink: 0;
+        }
+        .btn-icon:active {
+            transform: scale(0.92);
+        }
+        .btn-send {
+            background: #ff5500;
+            border: none;
+            color: #000;
+            padding: 8px 16px;
+            border-radius: 18px;
+            font-weight: 800;
+            cursor: pointer;
+            font-size: 14px;
+            flex-shrink: 0;
+            transition: 0.15s;
+            font-family: inherit;
+        }
+        .btn-send:active {
+            transform: scale(0.95);
+        }
+
+        /* voice pulse */
+        .listening {
+            animation: pulse 1.5s infinite;
+            background: #ff5500 !important;
+            color: #000 !important;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        /* scrollbar */
+        #chatContainer::-webkit-scrollbar {
+            width: 3px;
+        }
+        #chatContainer::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #chatContainer::-webkit-scrollbar-thumb {
+            background: #ff550066;
+            border-radius: 10px;
+        }
+
+        /* file input hidden */
+        .file-input-hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
-<div class="main-wrapper">
-    <div class="glass-header">
-        <div class="logo">✈ FlyTripVisa AI</div>
-        <button onclick="window.location.href='/login.html'" style="background:#1a1a1f; border:1px solid #333; color:#fff; padding:3px 10px; border-radius:10px; font-size:10px; cursor:pointer;">Admin</button>
+    <div class="main-wrapper">
+        <!-- header -->
+        <header class="glass-header">
+            <div class="logo">✈ FlyTripVisa <span>AI</span></div>
+            <a href="/login.html" class="admin-btn">Admin</a>
+        </header>
+
+        <!-- chat messages -->
+        <div id="chatContainer">
+            <div class="msg msg-ai">Hello! আমি FlyTripVisa AI। আজকের ভিসা বা ট্রাভেল প্ল্যান নিয়ে কীভাবে সাহায্য করতে পারি?</div>
+        </div>
+
+        <!-- input area -->
+        <div class="input-area">
+            <input type="file" id="fileInput" class="file-input-hidden" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" />
+            <button class="btn-icon" id="attachBtn" aria-label="Attach file">📎</button>
+            <input type="text" class="input-box" id="userInput" placeholder="আপনার প্রশ্ন লিখুন..." autocomplete="off" />
+            <button class="btn-icon" id="voiceBtn" aria-label="Voice input">🎙️</button>
+            <button class="btn-send" id="sendBtn">পাঠান</button>
+        </div>
     </div>
 
-    <div id="chatContainer">
-        <div class="msg msg-ai">Hello! আমি FlyTripVisa AI। আজকের ভিসা বা ট্রাভেল প্ল্যান নিয়ে কীভাবে সাহায্য করতে পারি?</div>
-    </div>
-
-    <div class="input-area">
-        <input type="file" id="fileInput" style="display: none;" onchange="handleFile(this)">
-        <button class="btn-icon" onclick="document.getElementById('fileInput').click()">📎</button>
-        <input type="text" class="input-box" id="userInput" placeholder="আপনার প্রশ্ন লিখুন..." onkeypress="if(event.key === 'Enter') sendMessage()">
-        <button class="btn-icon" id="voiceBtn" onclick="startVoiceRecognition()">🎙️</button>
-        <button class="btn-send" onclick="sendMessage()">পাঠান</button>
-    </div>
-</div>
-
-<script src="/chat.js"></script>
+    <!-- Chat UI frontend script -->
+    <script src="/chat.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.cloudflare.com/workers/wrangler/configuration/",
-  "name": "ollama-chat-app-template",
+  "name": "flytripvisa-ai",
   "main": "src/index.ts",
   "compatibility_date": "2025-06-24",
   "compatibility_flags": ["nodejs_compat"],
@@ -13,7 +13,7 @@
       "id": "cc79304937ff4daa9d6debae85da8be9"
     }
   ],
-"d1_databases": [
+  "d1_databases": [
     {
       "binding": "DB",
       "database_name": "flytripvisa_db",

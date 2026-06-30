@@ -1,4 +1,4 @@
-# FlyTripVisa AI Travel Assistant
+# FlyTripVisa AI Chat Assistant
 
 A Cloudflare Workers AI-powered travel assistant with chat, file management, and database integration.
 

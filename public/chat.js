@@ -7,11 +7,14 @@
 "use strict";
 
 // ====================== CONFIG ======================
-const API_URL = "/api/chat";   // ← Worker এর মাধ্যমে কল হবে (সিকিউর)
+const API_URL = "/api/chat";   // Worker proxy endpoint
 
 const chatContainer = document.getElementById("chatContainer");
 const userInput = document.getElementById("userInput");
-const sendBtn = document.querySelector(".btn-send");
+const sendBtn = document.getElementById("sendBtn");
+const voiceBtn = document.getElementById("voiceBtn");
+const attachBtn = document.getElementById("attachBtn");
+const fileInput = document.getElementById("fileInput");
 
 let chatHistory = [
     { 
@@ -21,36 +24,71 @@ let chatHistory = [
 ];
 
 // ====================== VOICE RECOGNITION ======================
-const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-recognition.lang = 'bn-BD';
+let recognition = null;
+let isListening = false;
 
-function startVoiceRecognition() {
-    const voiceBtn = document.getElementById('voiceBtn');
-    if (!voiceBtn) return;
-
-    voiceBtn.classList.add('listening');
-    recognition.start();
+function initVoice() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        console.warn("Voice not supported");
+        voiceBtn.style.opacity = "0.3";
+        voiceBtn.title = "Voice not supported";
+        return;
+    }
+    recognition = new SpeechRecognition();
+    recognition.lang = 'bn-BD';
+    recognition.continuous = false;
+    recognition.interimResults = false;
 
     recognition.onresult = (event) => {
-        userInput.value = event.results[0][0].transcript;
-        voiceBtn.classList.remove('listening');
+        const transcript = event.results[0][0].transcript;
+        userInput.value = transcript;
+        stopListening();
         sendMessage();
     };
 
-    recognition.onerror = () => {
-        voiceBtn.classList.remove('listening');
-        alert("ভয়েস রেকগনিশন ব্যর্থ হয়েছে! আবার চেষ্টা করুন।");
+    recognition.onerror = (event) => {
+        console.warn("Voice error:", event.error);
+        stopListening();
+        if (event.error !== 'not-allowed') {
+            alert("ভয়েস রেকগনিশন ব্যর্থ হয়েছে! আবার চেষ্টা করুন।");
+        }
     };
+
+    recognition.onend = stopListening;
+}
+
+function startVoice() {
+    if (!recognition) {
+        initVoice();
+        if (!recognition) return;
+    }
+    if (isListening) {
+        stopListening();
+        return;
+    }
+    try {
+        recognition.start();
+        isListening = true;
+        voiceBtn.classList.add('listening');
+        voiceBtn.textContent = '⏹️';
+    } catch (e) {
+        console.warn(e);
+    }
+}
+
+function stopListening() {
+    isListening = false;
+    voiceBtn.classList.remove('listening');
+    voiceBtn.textContent = '🎙️';
+    try { if (recognition) recognition.stop(); } catch (_) {}
 }
 
 // ====================== HELPER FUNCTIONS ======================
 function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+    const div = document.createElement('div');
+    div.textContent = unsafe;
+    return div.innerHTML;
 }
 
 function appendMessage(role, text) {
@@ -59,6 +97,21 @@ function appendMessage(role, text) {
     div.innerHTML = escapeHtml(text);
     chatContainer.appendChild(div);
     chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function showTyping() {
+    const div = document.createElement("div");
+    div.className = "msg msg-ai";
+    div.id = "typingIndicator";
+    div.textContent = "⏳ চিন্তা করছি...";
+    chatContainer.appendChild(div);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    return div;
+}
+
+function removeTyping() {
+    const el = document.getElementById("typingIndicator");
+    if (el) el.remove();
 }
 
 // ====================== MAIN SEND FUNCTION ======================
@@ -70,11 +123,7 @@ async function sendMessage() {
     chatHistory.push({ role: "user", content: text });
     userInput.value = "";
 
-    const aiMsgDiv = document.createElement("div");
-    aiMsgDiv.className = "msg msg-ai";
-    aiMsgDiv.textContent = "চিন্তা করছি...";
-    chatContainer.appendChild(aiMsgDiv);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    const typingEl = showTyping();
 
     try {
         const response = await fetch(API_URL, {
@@ -89,6 +138,8 @@ async function sendMessage() {
             })
         });
 
+        removeTyping();
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -96,20 +147,24 @@ async function sendMessage() {
         const data = await response.json();
         const reply = data.response || "দুঃখিত, কোনো উত্তর পাওয়া যায়নি।";
 
-        aiMsgDiv.textContent = reply;
+        appendMessage("assistant", reply);
         chatHistory.push({ role: "assistant", content: reply });
 
-        // Auto refresh for code/file updates
-        if (text.toLowerCase().match(/update|edit|তৈরি করো|আপডেট/)) {
-            setTimeout(() => location.reload(), 1500);
-        }
-
     } catch (err) {
+        removeTyping();
         console.error("AI Error:", err);
-        aiMsgDiv.innerHTML = "❌ সংযোগ সমস্যা হয়েছে।<br>পরে আবার চেষ্টা করুন।";
+        appendMessage("assistant", "❌ সংযোগ সমস্যা হয়েছে। পরে আবার চেষ্টা করুন।");
     }
+}
 
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+// ====================== FILE HANDLER ======================
+function handleFileUpload() {
+    if (fileInput.files && fileInput.files[0]) {
+        const file = fileInput.files[0];
+        appendMessage("user", `📎 ফাইল সংযুক্ত: ${escapeHtml(file.name)}`);
+        // In production, upload to R2 here
+        fileInput.value = '';
+    }
 }
 
 // ====================== EVENT LISTENERS ======================
@@ -119,14 +174,13 @@ userInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") sendMessage();
 });
 
-// File Attachment
-function handleFile(input) {
-    if (input.files && input.files[0]) {
-        alert(`📎 ফাইল সংযুক্ত হয়েছে: ${input.files[0].name}`);
-    }
-}
+voiceBtn.addEventListener("click", startVoice);
+
+attachBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", handleFileUpload);
 
 // ====================== INITIALIZE ======================
 document.addEventListener("DOMContentLoaded", () => {
-    appendMessage("assistant", chatHistory[0].content);
+    initVoice();
+    // Initial greeting is already in HTML
 });
